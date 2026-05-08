@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { fetchStockQuote, StockQuote } from '../services/stockService';
+import { fetchRedditSentiment, TickerSentiment } from '../services/redditService';
 
 const STORAGE_KEY = 'watchlist_symbols';
 const DEFAULT_SYMBOLS = ['AAPL', 'MSFT', 'NVDA'];
@@ -18,6 +19,7 @@ const DEFAULT_SYMBOLS = ['AAPL', 'MSFT', 'NVDA'];
 export default function WatchlistScreen({ navigation }: any) {
   const [symbols, setSymbols] = useState<string[]>([]);
   const [quotes, setQuotes] = useState<StockQuote[]>([]);
+  const [sentiment, setSentiment] = useState<Record<string, TickerSentiment>>({});
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -32,13 +34,26 @@ export default function WatchlistScreen({ navigation }: any) {
 
   const loadQuotes = async (list: string[]) => {
     setLoading(true);
-    const results = await Promise.allSettled(list.map(fetchStockQuote));
-    setQuotes(
-      results
-        .filter((r): r is PromiseFulfilledResult<StockQuote> => r.status === 'fulfilled')
-        .map((r) => r.value)
-        .sort((a, b) => a.symbol.localeCompare(b.symbol))
-    );
+    const [quoteResults, sentimentResults] = await Promise.allSettled([
+      Promise.allSettled(list.map(fetchStockQuote)),
+      fetchRedditSentiment(list),
+    ]);
+
+    if (quoteResults.status === 'fulfilled') {
+      setQuotes(
+        quoteResults.value
+          .filter((r): r is PromiseFulfilledResult<StockQuote> => r.status === 'fulfilled')
+          .map((r) => r.value)
+          .sort((a, b) => a.symbol.localeCompare(b.symbol))
+      );
+    }
+
+    if (sentimentResults.status === 'fulfilled') {
+      const map: Record<string, TickerSentiment> = {};
+      for (const s of sentimentResults.value) map[s.symbol] = s;
+      setSentiment(map);
+    }
+
     setLoading(false);
   };
 
@@ -150,6 +165,13 @@ export default function WatchlistScreen({ navigation }: any) {
                       {up ? '+' : ''}{item.changePercent.toFixed(2)}%
                     </Text>
                   </View>
+                  {sentiment[item.symbol]?.mentions > 0 && (
+                    <View style={styles.redditBadge}>
+                      <Text style={styles.redditText}>
+                        {sentiment[item.symbol].score >= 0 ? '🟢' : '🔴'} {sentiment[item.symbol].mentions} mentions
+                      </Text>
+                    </View>
+                  )}
                 </View>
               </TouchableOpacity>
             );
@@ -227,5 +249,7 @@ const styles = StyleSheet.create({
   summaryLabel: { fontSize: 11, color: '#8892A4', marginBottom: 4 },
   summaryValue: { fontSize: 18, fontWeight: '700' },
   summaryDivider: { width: 1, backgroundColor: '#1C2033' },
+  redditBadge: { marginTop: 4, backgroundColor: '#1C2033', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
+  redditText: { fontSize: 10, color: '#8892A4' },
   hint: { textAlign: 'center', color: '#2D3748', fontSize: 12, marginTop: 12 },
 });
