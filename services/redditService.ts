@@ -45,6 +45,36 @@ async function fetchSubredditPosts(subreddit: string): Promise<RedditPost[]> {
   }));
 }
 
+export interface MarketMood {
+  totalPosts: number;
+  bullish: number;
+  bearish: number;
+  score: number;
+  topPosts: RedditPost[];
+}
+
+export async function fetchMarketMood(): Promise<MarketMood> {
+  const results = await Promise.allSettled(SUBREDDITS.map(fetchSubredditPosts));
+  const allPosts: RedditPost[] = [];
+  for (const r of results) {
+    if (r.status === 'fulfilled') allPosts.push(...r.value);
+  }
+
+  let bullish = 0;
+  let bearish = 0;
+  for (const post of allPosts) {
+    const s = scoreSentiment(post.title);
+    bullish += s.bullish;
+    bearish += s.bearish;
+  }
+
+  const total = bullish + bearish;
+  const score = total === 0 ? 0 : Math.round(((bullish - bearish) / total) * 100);
+  const topPosts = [...allPosts].sort((a, b) => b.score - a.score).slice(0, 5);
+
+  return { totalPosts: allPosts.length, bullish, bearish, score, topPosts };
+}
+
 export async function fetchRedditSentiment(symbols: string[]): Promise<TickerSentiment[]> {
   const results = await Promise.allSettled(SUBREDDITS.map(fetchSubredditPosts));
   const allPosts: RedditPost[] = [];

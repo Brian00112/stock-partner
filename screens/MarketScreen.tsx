@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { fetchMarketIndices, StockQuote } from '../services/stockService';
 import { fetchFearGreed, fearGreedColor, FearGreedData } from '../services/sentimentService';
+import { fetchMarketMood, MarketMood } from '../services/redditService';
 
 function today(): string {
   return new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
@@ -125,6 +126,7 @@ function IndexCard({ item, onPress }: { item: StockQuote; onPress?: () => void }
 export default function MarketScreen({ navigation }: any) {
   const [indices, setIndices] = useState<StockQuote[]>([]);
   const [fearGreed, setFearGreed] = useState<FearGreedData | null>(null);
+  const [mood, setMood] = useState<MarketMood | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
@@ -133,12 +135,14 @@ export default function MarketScreen({ navigation }: any) {
     if (!silent) setLoading(true);
     try {
       setError('');
-      const [indicesData, fgData] = await Promise.allSettled([
+      const [indicesData, fgData, moodData] = await Promise.allSettled([
         fetchMarketIndices(),
         fetchFearGreed(),
+        fetchMarketMood(),
       ]);
       if (indicesData.status === 'fulfilled') setIndices(indicesData.value);
       if (fgData.status === 'fulfilled') setFearGreed(fgData.value);
+      if (moodData.status === 'fulfilled') setMood(moodData.value);
       if (indicesData.status === 'rejected') setError('Failed to load market data.');
     } finally {
       setLoading(false);
@@ -165,6 +169,34 @@ export default function MarketScreen({ navigation }: any) {
       </View>
       <MarketStatusBanner />
       {fearGreed ? <FearGreedCard data={fearGreed} /> : null}
+      {mood ? (
+        <View style={styles.moodCard}>
+          <Text style={styles.moodTitle}>REDDIT MARKET MOOD</Text>
+          <View style={styles.moodRow}>
+            <View style={styles.moodItem}>
+              <Text style={styles.moodLabel}>Posts Analyzed</Text>
+              <Text style={styles.moodValue}>{mood.totalPosts}</Text>
+            </View>
+            <View style={styles.moodItem}>
+              <Text style={styles.moodLabel}>Bullish Signals</Text>
+              <Text style={[styles.moodValue, { color: '#00C896' }]}>{mood.bullish}</Text>
+            </View>
+            <View style={styles.moodItem}>
+              <Text style={styles.moodLabel}>Bearish Signals</Text>
+              <Text style={[styles.moodValue, { color: '#FF4757' }]}>{mood.bearish}</Text>
+            </View>
+          </View>
+          <View style={styles.moodBarBg}>
+            <View style={[styles.moodBarFill, {
+              width: `${Math.min(Math.max((mood.score + 100) / 2, 0), 100)}%` as any,
+              backgroundColor: mood.score >= 0 ? '#00C896' : '#FF4757',
+            }]} />
+          </View>
+          <Text style={[styles.moodScore, { color: mood.score >= 0 ? '#00C896' : '#FF4757' }]}>
+            {mood.score >= 0 ? 'Bullish' : 'Bearish'} {Math.abs(mood.score)}%
+          </Text>
+        </View>
+      ) : null}
       {error ? <Text style={styles.error}>{error}</Text> : null}
       <FlatList
         data={indices}
@@ -242,5 +274,18 @@ const styles = StyleSheet.create({
   fgBarFill: { height: 6, borderRadius: 3 },
   fgFooter: { flexDirection: 'row', justifyContent: 'space-between' },
   fgStat: { fontSize: 12, color: '#8892A4' },
+  moodCard: {
+    marginHorizontal: 16, marginBottom: 16,
+    backgroundColor: '#141824', borderRadius: 16,
+    padding: 16, borderWidth: 1, borderColor: '#1C2033',
+  },
+  moodTitle: { fontSize: 11, fontWeight: '600', color: '#8892A4', letterSpacing: 1, marginBottom: 12 },
+  moodRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 },
+  moodItem: { alignItems: 'center' },
+  moodLabel: { fontSize: 11, color: '#8892A4', marginBottom: 2 },
+  moodValue: { fontSize: 18, fontWeight: '700', color: '#fff' },
+  moodBarBg: { height: 6, backgroundColor: '#1C2033', borderRadius: 3, marginBottom: 8 },
+  moodBarFill: { height: 6, borderRadius: 3 },
+  moodScore: { fontSize: 13, fontWeight: '600', textAlign: 'center' },
   error: { color: '#FF4757', paddingHorizontal: 20, marginBottom: 8 },
 });
