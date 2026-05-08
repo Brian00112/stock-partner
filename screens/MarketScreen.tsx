@@ -1,22 +1,99 @@
 import React, { useEffect, useState } from 'react';
 import {
-  View, Text, StyleSheet, FlatList, ActivityIndicator, RefreshControl,
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  RefreshControl,
+  ActivityIndicator,
+  StatusBar,
+  TouchableOpacity,
 } from 'react-native';
 import { fetchMarketIndices, StockQuote } from '../services/stockService';
 
-export default function MarketScreen() {
+function today(): string {
+  return new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+}
+
+type MarketSession = 'pre' | 'open' | 'after' | 'closed';
+
+function getMarketSession(): { session: MarketSession; label: string; next: string } {
+  const now = new Date();
+  const et = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+  const day = et.getDay();
+  const h = et.getHours();
+  const m = et.getMinutes();
+  const mins = h * 60 + m;
+
+  const isWeekend = day === 0 || day === 6;
+  if (isWeekend) return { session: 'closed', label: 'Market Closed', next: 'Opens Monday 9:30 AM ET' };
+
+  if (mins < 240) return { session: 'closed', label: 'Market Closed', next: 'Pre-market opens 4:00 AM ET' };
+  if (mins < 570) return { session: 'pre', label: 'Pre-Market', next: 'Market opens 9:30 AM ET' };
+  if (mins < 960) return { session: 'open', label: 'Market Open', next: 'Closes 4:00 PM ET' };
+  if (mins < 1200) return { session: 'after', label: 'After Hours', next: 'Closes 8:00 PM ET' };
+  return { session: 'closed', label: 'Market Closed', next: 'Pre-market opens 4:00 AM ET' };
+}
+
+const SESSION_COLORS: Record<MarketSession, string> = {
+  open: '#00C896',
+  pre: '#F5A623',
+  after: '#7B68EE',
+  closed: '#4A5568',
+};
+
+function MarketStatusBanner() {
+  const { session, label, next } = getMarketSession();
+  const color = SESSION_COLORS[session];
+  return (
+    <View style={[styles.banner, { borderColor: color + '33', backgroundColor: color + '11' }]}>
+      <View style={[styles.dot, { backgroundColor: color }]} />
+      <View>
+        <Text style={[styles.bannerLabel, { color }]}>{label}</Text>
+        <Text style={styles.bannerNext}>{next}</Text>
+      </View>
+    </View>
+  );
+}
+
+function IndexCard({ item, onPress }: { item: StockQuote; onPress?: () => void }) {
+  const up = item.change >= 0;
+  return (
+    <TouchableOpacity style={styles.card} activeOpacity={onPress ? 0.7 : 1} onPress={onPress}>
+      <View style={styles.cardTop}>
+        <View>
+          <Text style={styles.indexName}>{item.name}</Text>
+          <Text style={styles.symbol}>{item.symbol}</Text>
+        </View>
+        <View style={[styles.badge, { backgroundColor: up ? '#0d2e22' : '#2e0d0d' }]}>
+          <Text style={[styles.badgeText, { color: up ? '#00C896' : '#FF4757' }]}>
+            {up ? '▲' : '▼'} {Math.abs(item.changePercent).toFixed(2)}%
+          </Text>
+        </View>
+      </View>
+      <Text style={styles.price}>
+        {item.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+      </Text>
+      <Text style={[styles.change, { color: up ? '#00C896' : '#FF4757' }]}>
+        {up ? '+' : ''}{item.change.toFixed(2)} today
+      </Text>
+    </View>
+  );
+}
+
+export default function MarketScreen({ navigation }: any) {
   const [indices, setIndices] = useState<StockQuote[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
 
-  const load = async () => {
+  const load = async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       setError('');
-      const data = await fetchMarketIndices();
-      setIndices(data);
+      setIndices(await fetchMarketIndices());
     } catch {
-      setError('시장 데이터를 불러오지 못했습니다.');
+      setError('Failed to load market data.');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -25,52 +102,85 @@ export default function MarketScreen() {
 
   useEffect(() => { load(); }, []);
 
-  const onRefresh = () => { setRefreshing(true); load(); };
-
-  if (loading) return <ActivityIndicator style={styles.center} size="large" color="#00d4aa" />;
+  if (loading) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color="#00C896" />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
-      <Text style={styles.header}>📈 Market Overview</Text>
+      <StatusBar barStyle="light-content" />
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>Markets</Text>
+        <Text style={styles.headerDate}>{today()}</Text>
+      </View>
+      <MarketStatusBanner />
       {error ? <Text style={styles.error}>{error}</Text> : null}
       <FlatList
         data={indices}
         keyExtractor={(item) => item.symbol}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#00d4aa" />}
-        renderItem={({ item }) => {
-          const isUp = item.change >= 0;
-          return (
-            <View style={styles.card}>
-              <View>
-                <Text style={styles.indexName}>{item.name}</Text>
-                <Text style={styles.symbol}>{item.symbol}</Text>
-              </View>
-              <View style={styles.right}>
-                <Text style={styles.price}>{item.price.toLocaleString('en-US', { maximumFractionDigits: 2 })}</Text>
-                <Text style={[styles.change, { color: isUp ? '#00d4aa' : '#ff4d4d' }]}>
-                  {isUp ? '+' : ''}{item.change.toFixed(2)} ({isUp ? '+' : ''}{item.changePercent.toFixed(2)}%)
-                </Text>
-              </View>
-            </View>
-          );
-        }}
+        contentContainerStyle={{ paddingBottom: 24 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => { setRefreshing(true); load(true); }}
+            tintColor="#00C896"
+          />
+        }
+        ListHeaderComponent={<Text style={styles.sectionLabel}>US INDICES</Text>}
+        renderItem={({ item }) => (
+          <IndexCard
+            item={item}
+            onPress={!item.symbol.startsWith('^')
+              ? () => navigation.navigate('StockDetail', { symbol: item.symbol })
+              : undefined}
+          />
+        )}
       />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0a0e1a', padding: 16 },
-  center: { flex: 1, backgroundColor: '#0a0e1a' },
-  header: { fontSize: 22, fontWeight: 'bold', color: '#fff', marginBottom: 16, marginTop: 8 },
-  card: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    backgroundColor: '#141824', borderRadius: 12, padding: 16, marginBottom: 12,
+  container: { flex: 1, backgroundColor: '#0B0E17' },
+  center: { flex: 1, backgroundColor: '#0B0E17', justifyContent: 'center', alignItems: 'center' },
+  header: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 12 },
+  headerTitle: { fontSize: 28, fontWeight: '700', color: '#fff', letterSpacing: -0.5 },
+  headerDate: { fontSize: 13, color: '#8892A4', marginTop: 2 },
+  banner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 16,
+    marginBottom: 16,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    gap: 10,
   },
-  indexName: { fontSize: 16, fontWeight: '600', color: '#fff' },
-  symbol: { fontSize: 12, color: '#888', marginTop: 2 },
-  right: { alignItems: 'flex-end' },
-  price: { fontSize: 18, fontWeight: 'bold', color: '#fff' },
-  change: { fontSize: 13, marginTop: 2 },
-  error: { color: '#ff4d4d', marginBottom: 8 },
+  dot: { width: 8, height: 8, borderRadius: 4 },
+  bannerLabel: { fontSize: 13, fontWeight: '700' },
+  bannerNext: { fontSize: 11, color: '#8892A4', marginTop: 1 },
+  sectionLabel: {
+    fontSize: 11, fontWeight: '600', color: '#8892A4',
+    letterSpacing: 1, marginBottom: 10, paddingHorizontal: 20,
+  },
+  card: {
+    marginHorizontal: 16, marginBottom: 12,
+    backgroundColor: '#141824', borderRadius: 16,
+    padding: 18, borderWidth: 1, borderColor: '#1C2033',
+  },
+  cardTop: {
+    flexDirection: 'row', justifyContent: 'space-between',
+    alignItems: 'flex-start', marginBottom: 12,
+  },
+  indexName: { fontSize: 15, fontWeight: '600', color: '#fff' },
+  symbol: { fontSize: 12, color: '#8892A4', marginTop: 2 },
+  badge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
+  badgeText: { fontSize: 13, fontWeight: '600' },
+  price: { fontSize: 32, fontWeight: '700', color: '#fff', letterSpacing: -1 },
+  change: { fontSize: 13, marginTop: 4, fontWeight: '500' },
+  error: { color: '#FF4757', paddingHorizontal: 20, marginBottom: 8 },
 });
