@@ -10,6 +10,7 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { fetchMarketIndices, StockQuote } from '../services/stockService';
+import { fetchFearGreed, fearGreedColor, FearGreedData } from '../services/sentimentService';
 
 function today(): string {
   return new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
@@ -41,6 +42,30 @@ const SESSION_COLORS: Record<MarketSession, string> = {
   after: '#7B68EE',
   closed: '#4A5568',
 };
+
+function FearGreedCard({ data }: { data: FearGreedData }) {
+  const color = fearGreedColor(data.score);
+  const pct = data.score;
+  return (
+    <View style={styles.fgCard}>
+      <View style={styles.fgTop}>
+        <View>
+          <Text style={styles.fgTitle}>Fear & Greed Index</Text>
+          <Text style={[styles.fgLabel, { color }]}>{data.label.toUpperCase()}</Text>
+        </View>
+        <Text style={[styles.fgScore, { color }]}>{data.score}</Text>
+      </View>
+      <View style={styles.fgBarBg}>
+        <View style={[styles.fgBarFill, { width: `${pct}%` as any, backgroundColor: color }]} />
+      </View>
+      <View style={styles.fgFooter}>
+        <Text style={styles.fgStat}>Prev <Text style={{ color: fearGreedColor(data.previousClose) }}>{data.previousClose}</Text></Text>
+        <Text style={styles.fgStat}>1W <Text style={{ color: fearGreedColor(data.oneWeekAgo) }}>{data.oneWeekAgo}</Text></Text>
+        <Text style={styles.fgStat}>1M <Text style={{ color: fearGreedColor(data.oneMonthAgo) }}>{data.oneMonthAgo}</Text></Text>
+      </View>
+    </View>
+  );
+}
 
 function MarketStatusBanner() {
   const { session, label, next } = getMarketSession();
@@ -83,6 +108,7 @@ function IndexCard({ item, onPress }: { item: StockQuote; onPress?: () => void }
 
 export default function MarketScreen({ navigation }: any) {
   const [indices, setIndices] = useState<StockQuote[]>([]);
+  const [fearGreed, setFearGreed] = useState<FearGreedData | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
@@ -91,9 +117,13 @@ export default function MarketScreen({ navigation }: any) {
     if (!silent) setLoading(true);
     try {
       setError('');
-      setIndices(await fetchMarketIndices());
-    } catch {
-      setError('Failed to load market data.');
+      const [indicesData, fgData] = await Promise.allSettled([
+        fetchMarketIndices(),
+        fetchFearGreed(),
+      ]);
+      if (indicesData.status === 'fulfilled') setIndices(indicesData.value);
+      if (fgData.status === 'fulfilled') setFearGreed(fgData.value);
+      if (indicesData.status === 'rejected') setError('Failed to load market data.');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -118,6 +148,7 @@ export default function MarketScreen({ navigation }: any) {
         <Text style={styles.headerDate}>{today()}</Text>
       </View>
       <MarketStatusBanner />
+      {fearGreed ? <FearGreedCard data={fearGreed} /> : null}
       {error ? <Text style={styles.error}>{error}</Text> : null}
       <FlatList
         data={indices}
@@ -182,5 +213,18 @@ const styles = StyleSheet.create({
   badgeText: { fontSize: 13, fontWeight: '600' },
   price: { fontSize: 32, fontWeight: '700', color: '#fff', letterSpacing: -1 },
   change: { fontSize: 13, marginTop: 4, fontWeight: '500' },
+  fgCard: {
+    marginHorizontal: 16, marginBottom: 16,
+    backgroundColor: '#141824', borderRadius: 16,
+    padding: 16, borderWidth: 1, borderColor: '#1C2033',
+  },
+  fgTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 },
+  fgTitle: { fontSize: 12, color: '#8892A4', fontWeight: '600', letterSpacing: 0.5, marginBottom: 4 },
+  fgLabel: { fontSize: 16, fontWeight: '700' },
+  fgScore: { fontSize: 40, fontWeight: '700', letterSpacing: -1 },
+  fgBarBg: { height: 6, backgroundColor: '#1C2033', borderRadius: 3, marginBottom: 10 },
+  fgBarFill: { height: 6, borderRadius: 3 },
+  fgFooter: { flexDirection: 'row', justifyContent: 'space-between' },
+  fgStat: { fontSize: 12, color: '#8892A4' },
   error: { color: '#FF4757', paddingHorizontal: 20, marginBottom: 8 },
 });
