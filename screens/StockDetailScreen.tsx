@@ -6,6 +6,7 @@ import {
 import axios from 'axios';
 import { fetchNewsBySymbol, NewsArticle } from '../services/newsService';
 import { fetchRedditSentiment, TickerSentiment } from '../services/redditService';
+import { analyzeStock, AIAnalysis } from '../services/claudeService';
 
 const PROXY = 'https://corsproxy.io/?url=';
 const YAHOO_BASE = `${PROXY}https://query1.finance.yahoo.com/v8/finance/chart`;
@@ -53,6 +54,9 @@ export default function StockDetailScreen({ route, navigation }: any) {
   const [detail, setDetail] = useState<StockDetail | null>(null);
   const [relatedNews, setRelatedNews] = useState<NewsArticle[]>([]);
   const [reddit, setReddit] = useState<TickerSentiment | null>(null);
+  const [aiAnalysis, setAiAnalysis] = useState<AIAnalysis | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -96,6 +100,20 @@ export default function StockDetailScreen({ route, navigation }: any) {
     }
   };
 
+  const runAIAnalysis = async () => {
+    if (!detail) return;
+    setAiLoading(true);
+    setAiError('');
+    try {
+      const result = await analyzeStock(detail, relatedNews, reddit);
+      setAiAnalysis(result);
+    } catch {
+      setAiError('AI analysis failed. Check your API key in .env');
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
   if (loading) return <View style={styles.center}><ActivityIndicator size="large" color="#00C896" /></View>;
   if (error || !detail) return <View style={styles.center}><Text style={styles.error}>{error}</Text></View>;
 
@@ -127,6 +145,51 @@ export default function StockDetailScreen({ route, navigation }: any) {
           <Text style={styles.rangeLabel}>${detail.low52.toFixed(2)}</Text>
           <Text style={styles.rangeLabel}>${detail.high52.toFixed(2)}</Text>
         </View>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>AI ANALYSIS</Text>
+        {!aiAnalysis && !aiLoading && (
+          <TouchableOpacity style={styles.aiBtn} onPress={runAIAnalysis}>
+            <Text style={styles.aiBtnText}>✦ Analyze with Claude</Text>
+          </TouchableOpacity>
+        )}
+        {aiLoading && (
+          <View style={styles.aiCard}>
+            <ActivityIndicator color="#00C896" />
+            <Text style={{ color: '#8892A4', marginTop: 8, fontSize: 13 }}>Analyzing...</Text>
+          </View>
+        )}
+        {aiError ? <Text style={styles.error}>{aiError}</Text> : null}
+        {aiAnalysis && (
+          <View style={styles.aiCard}>
+            <View style={styles.aiHeader}>
+              <View style={[styles.signalBadge, {
+                backgroundColor:
+                  aiAnalysis.signal === 'bullish' ? '#0d2e22' :
+                  aiAnalysis.signal === 'bearish' ? '#2e0d0d' : '#1C2033'
+              }]}>
+                <Text style={[styles.signalText, {
+                  color:
+                    aiAnalysis.signal === 'bullish' ? '#00C896' :
+                    aiAnalysis.signal === 'bearish' ? '#FF4757' : '#8892A4'
+                }]}>
+                  {aiAnalysis.signal.toUpperCase()} · {aiAnalysis.confidence.toUpperCase()} CONFIDENCE
+                </Text>
+              </View>
+              <TouchableOpacity onPress={runAIAnalysis}>
+                <Text style={{ color: '#4A5568', fontSize: 12 }}>Refresh</Text>
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.aiSummary}>{aiAnalysis.summary}</Text>
+            {aiAnalysis.keyPoints.map((pt, i) => (
+              <View key={i} style={styles.aiPoint}>
+                <Text style={styles.aiDot}>·</Text>
+                <Text style={styles.aiPointText}>{pt}</Text>
+              </View>
+            ))}
+          </View>
+        )}
       </View>
 
       {reddit && reddit.mentions > 0 && (
@@ -222,5 +285,22 @@ const styles = StyleSheet.create({
   },
   rowLabel: { fontSize: 14, color: '#8892A4' },
   rowValue: { fontSize: 14, fontWeight: '600', color: '#fff' },
+  aiBtn: {
+    backgroundColor: '#141824', borderRadius: 12, padding: 16,
+    borderWidth: 1, borderColor: '#00C896', alignItems: 'center',
+  },
+  aiBtnText: { color: '#00C896', fontWeight: '700', fontSize: 15 },
+  aiCard: {
+    backgroundColor: '#141824', borderRadius: 14,
+    borderWidth: 1, borderColor: '#1C2033', padding: 16,
+    alignItems: aiLoading ? 'center' : 'stretch',
+  },
+  aiHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  signalBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
+  signalText: { fontSize: 11, fontWeight: '700', letterSpacing: 0.5 },
+  aiSummary: { fontSize: 14, color: '#E2E8F0', lineHeight: 21, marginBottom: 12 },
+  aiPoint: { flexDirection: 'row', gap: 6, marginBottom: 6 },
+  aiDot: { color: '#00C896', fontWeight: '700', fontSize: 16, lineHeight: 20 },
+  aiPointText: { flex: 1, fontSize: 13, color: '#8892A4', lineHeight: 19 },
   error: { color: '#FF4757' },
 });
