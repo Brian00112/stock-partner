@@ -57,6 +57,19 @@ async function parseFeed(feedUrl: string, source: string): Promise<NewsArticle[]
   }));
 }
 
+export async function fetchNewsBySymbol(symbol: string): Promise<NewsArticle[]> {
+  const PROXY = 'https://corsproxy.io/?url=';
+  const feeds = [
+    { url: `https://feeds.marketwatch.com/marketwatch/realtimeheadlines/`, source: 'MarketWatch' },
+    { url: `https://feeds.reuters.com/reuters/businessNews`, source: 'Reuters' },
+  ];
+  const all = await fetchFinancialNews();
+  const name = symbol.toLowerCase();
+  return all.filter((a) =>
+    a.title.toLowerCase().includes(name) || a.summary.toLowerCase().includes(name)
+  );
+}
+
 export async function fetchFinancialNews(): Promise<NewsArticle[]> {
   const results = await Promise.allSettled(FEEDS.map(({ url, source }) => parseFeed(url, source)));
 

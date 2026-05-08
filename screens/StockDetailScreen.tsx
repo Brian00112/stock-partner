@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, ActivityIndicator,
-  ScrollView, TouchableOpacity,
+  ScrollView, TouchableOpacity, Linking,
 } from 'react-native';
 import axios from 'axios';
+import { fetchNewsBySymbol, NewsArticle } from '../services/newsService';
 
 const PROXY = 'https://corsproxy.io/?url=';
 const YAHOO_BASE = `${PROXY}https://query1.finance.yahoo.com/v8/finance/chart`;
@@ -49,6 +50,7 @@ function Row({ label, value, valueColor }: { label: string; value: string; value
 export default function StockDetailScreen({ route, navigation }: any) {
   const { symbol } = route.params as { symbol: string };
   const [detail, setDetail] = useState<StockDetail | null>(null);
+  const [relatedNews, setRelatedNews] = useState<NewsArticle[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -59,28 +61,32 @@ export default function StockDetailScreen({ route, navigation }: any) {
 
   const load = async () => {
     try {
-      const res = await axios.get(`${YAHOO_BASE}/${symbol}`, {
-        params: { interval: '1d', range: '1d' },
-      });
-      const meta = res.data.chart.result[0].meta;
-      const price = meta.regularMarketPrice;
-      const prev = meta.chartPreviousClose;
-      setDetail({
-        symbol,
-        name: meta.shortName || symbol,
-        price,
-        change: price - prev,
-        changePercent: ((price - prev) / prev) * 100,
-        high52: meta.fiftyTwoWeekHigh,
-        low52: meta.fiftyTwoWeekLow,
-        volume: meta.regularMarketVolume,
-        avgVolume: meta.averageDailyVolume3Month,
-        marketCap: meta.marketCap,
-        open: meta.regularMarketOpen,
-        prevClose: prev,
-      });
-    } catch {
-      setError('Failed to load stock data.');
+      const [stockRes, newsRes] = await Promise.allSettled([
+        axios.get(`${YAHOO_BASE}/${symbol}`, { params: { interval: '1d', range: '1d' } }),
+        fetchNewsBySymbol(symbol),
+      ]);
+      if (stockRes.status === 'fulfilled') {
+        const meta = stockRes.value.data.chart.result[0].meta;
+        const price = meta.regularMarketPrice;
+        const prev = meta.chartPreviousClose;
+        setDetail({
+          symbol,
+          name: meta.shortName || symbol,
+          price,
+          change: price - prev,
+          changePercent: ((price - prev) / prev) * 100,
+          high52: meta.fiftyTwoWeekHigh,
+          low52: meta.fiftyTwoWeekLow,
+          volume: meta.regularMarketVolume,
+          avgVolume: meta.averageDailyVolume3Month,
+          marketCap: meta.marketCap,
+          open: meta.regularMarketOpen,
+          prevClose: prev,
+        });
+      } else {
+        setError('Failed to load stock data.');
+      }
+      if (newsRes.status === 'fulfilled') setRelatedNews(newsRes.value.slice(0, 5));
     } finally {
       setLoading(false);
     }
@@ -118,6 +124,24 @@ export default function StockDetailScreen({ route, navigation }: any) {
           <Text style={styles.rangeLabel}>${detail.high52.toFixed(2)}</Text>
         </View>
       </View>
+
+      {relatedNews.length > 0 && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>RELATED NEWS</Text>
+          <View style={styles.statsCard}>
+            {relatedNews.map((article, i) => (
+              <TouchableOpacity
+                key={i}
+                style={[styles.row, { flexDirection: 'column', alignItems: 'flex-start', gap: 4 }]}
+                onPress={() => article.url && Linking.openURL(article.url)}
+              >
+                <Text style={{ fontSize: 11, color: '#00C896', fontWeight: '700' }}>{article.source} · {article.publishedAt}</Text>
+                <Text style={{ fontSize: 13, color: '#E2E8F0', lineHeight: 18 }} numberOfLines={2}>{article.title}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+      )}
 
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>KEY STATS</Text>

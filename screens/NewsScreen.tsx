@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   RefreshControl,
   TouchableOpacity,
   Linking,
+  ScrollView,
 } from 'react-native';
 import { fetchFinancialNews, NewsArticle } from '../services/newsService';
 
@@ -16,6 +17,28 @@ const SOURCE_COLORS: Record<string, string> = {
   CNBC: '#FF6B35',
   Reuters: '#FF8C00',
 };
+
+const SOURCES = ['All', 'MarketWatch', 'CNBC', 'Reuters'];
+
+function FilterBar({ active, onChange }: { active: string; onChange: (s: string) => void }) {
+  return (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterBar} contentContainerStyle={{ paddingHorizontal: 16, gap: 8 }}>
+      {SOURCES.map((s) => {
+        const isActive = s === active;
+        const color = SOURCE_COLORS[s] ?? '#00C896';
+        return (
+          <TouchableOpacity
+            key={s}
+            onPress={() => onChange(s)}
+            style={[styles.filterChip, isActive && { backgroundColor: color + '22', borderColor: color }]}
+          >
+            <Text style={[styles.filterText, isActive && { color }]}>{s}</Text>
+          </TouchableOpacity>
+        );
+      })}
+    </ScrollView>
+  );
+}
 
 function NewsCard({ item }: { item: NewsArticle }) {
   const color = SOURCE_COLORS[item.source] ?? '#8892A4';
@@ -45,6 +68,12 @@ export default function NewsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
+  const [activeSource, setActiveSource] = useState('All');
+
+  const filtered = useMemo(() =>
+    activeSource === 'All' ? news : news.filter((a) => a.source === activeSource),
+    [news, activeSource]
+  );
 
   const load = async (silent = false) => {
     if (!silent) setLoading(true);
@@ -62,11 +91,7 @@ export default function NewsScreen() {
   useEffect(() => { load(); }, []);
 
   if (loading) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color="#00C896" />
-      </View>
-    );
+    return <View style={styles.center}><ActivityIndicator size="large" color="#00C896" /></View>;
   }
 
   return (
@@ -75,12 +100,13 @@ export default function NewsScreen() {
         <Text style={styles.headerTitle}>News</Text>
         <Text style={styles.headerSub}>Finance & Markets</Text>
       </View>
+      <FilterBar active={activeSource} onChange={setActiveSource} />
       {error ? <Text style={styles.error}>{error}</Text> : null}
-      {!error && news.length === 0 && !loading ? (
+      {!error && filtered.length === 0 && !loading ? (
         <Text style={styles.empty}>No articles found. Pull to refresh.</Text>
       ) : null}
       <FlatList
-        data={news}
+        data={filtered}
         keyExtractor={(_, i) => String(i)}
         contentContainerStyle={{ paddingBottom: 24 }}
         refreshControl={
@@ -99,18 +125,20 @@ export default function NewsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0B0E17' },
   center: { flex: 1, backgroundColor: '#0B0E17', justifyContent: 'center', alignItems: 'center' },
-  header: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 12 },
+  header: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 8 },
   headerTitle: { fontSize: 28, fontWeight: '700', color: '#fff', letterSpacing: -0.5 },
   headerSub: { fontSize: 13, color: '#8892A4', marginTop: 2 },
-  card: {
-    flexDirection: 'row',
-    marginHorizontal: 16,
-    marginBottom: 10,
+  filterBar: { marginBottom: 12 },
+  filterChip: {
+    paddingHorizontal: 14, paddingVertical: 6,
+    borderRadius: 20, borderWidth: 1, borderColor: '#1C2033',
     backgroundColor: '#141824',
-    borderRadius: 14,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: '#1C2033',
+  },
+  filterText: { fontSize: 13, fontWeight: '600', color: '#4A5568' },
+  card: {
+    flexDirection: 'row', marginHorizontal: 16, marginBottom: 10,
+    backgroundColor: '#141824', borderRadius: 14,
+    padding: 14, borderWidth: 1, borderColor: '#1C2033',
   },
   sourceDot: { width: 3, borderRadius: 2, marginRight: 12, alignSelf: 'stretch' },
   cardContent: { flex: 1 },
