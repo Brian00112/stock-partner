@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import axios from 'axios';
 import { fetchNewsBySymbol, NewsArticle } from '../services/newsService';
+import { fetchRedditSentiment, TickerSentiment } from '../services/redditService';
 
 const PROXY = 'https://corsproxy.io/?url=';
 const YAHOO_BASE = `${PROXY}https://query1.finance.yahoo.com/v8/finance/chart`;
@@ -51,6 +52,7 @@ export default function StockDetailScreen({ route, navigation }: any) {
   const { symbol } = route.params as { symbol: string };
   const [detail, setDetail] = useState<StockDetail | null>(null);
   const [relatedNews, setRelatedNews] = useState<NewsArticle[]>([]);
+  const [reddit, setReddit] = useState<TickerSentiment | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -61,9 +63,10 @@ export default function StockDetailScreen({ route, navigation }: any) {
 
   const load = async () => {
     try {
-      const [stockRes, newsRes] = await Promise.allSettled([
+      const [stockRes, newsRes, redditRes] = await Promise.allSettled([
         axios.get(`${YAHOO_BASE}/${symbol}`, { params: { interval: '1d', range: '1d' } }),
         fetchNewsBySymbol(symbol),
+        fetchRedditSentiment([symbol]),
       ]);
       if (stockRes.status === 'fulfilled') {
         const meta = stockRes.value.data.chart.result[0].meta;
@@ -87,6 +90,7 @@ export default function StockDetailScreen({ route, navigation }: any) {
         setError('Failed to load stock data.');
       }
       if (newsRes.status === 'fulfilled') setRelatedNews(newsRes.value.slice(0, 5));
+      if (redditRes.status === 'fulfilled') setReddit(redditRes.value[0] ?? null);
     } finally {
       setLoading(false);
     }
@@ -124,6 +128,40 @@ export default function StockDetailScreen({ route, navigation }: any) {
           <Text style={styles.rangeLabel}>${detail.high52.toFixed(2)}</Text>
         </View>
       </View>
+
+      {reddit && reddit.mentions > 0 && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>REDDIT SENTIMENT</Text>
+          <View style={styles.statsCard}>
+            <View style={[styles.row, { gap: 0 }]}>
+              <View style={{ flex: 1, alignItems: 'center', paddingVertical: 14 }}>
+                <Text style={{ fontSize: 11, color: '#8892A4', marginBottom: 4 }}>Mentions</Text>
+                <Text style={{ fontSize: 22, fontWeight: '700', color: '#fff' }}>{reddit.mentions}</Text>
+              </View>
+              <View style={{ width: 1, backgroundColor: '#1C2033' }} />
+              <View style={{ flex: 1, alignItems: 'center', paddingVertical: 14 }}>
+                <Text style={{ fontSize: 11, color: '#8892A4', marginBottom: 4 }}>Bullish</Text>
+                <Text style={{ fontSize: 22, fontWeight: '700', color: '#00C896' }}>{reddit.bullish}</Text>
+              </View>
+              <View style={{ width: 1, backgroundColor: '#1C2033' }} />
+              <View style={{ flex: 1, alignItems: 'center', paddingVertical: 14 }}>
+                <Text style={{ fontSize: 11, color: '#8892A4', marginBottom: 4 }}>Bearish</Text>
+                <Text style={{ fontSize: 22, fontWeight: '700', color: '#FF4757' }}>{reddit.bearish}</Text>
+              </View>
+            </View>
+            {reddit.posts.map((post, i) => (
+              <TouchableOpacity
+                key={i}
+                style={[styles.row, { flexDirection: 'column', alignItems: 'flex-start', gap: 4 }]}
+                onPress={() => Linking.openURL(post.url)}
+              >
+                <Text style={{ fontSize: 11, color: '#FF6B35', fontWeight: '700' }}>r/{post.subreddit} · ▲ {post.score.toLocaleString()}</Text>
+                <Text style={{ fontSize: 13, color: '#E2E8F0', lineHeight: 18 }} numberOfLines={2}>{post.title}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+      )}
 
       {relatedNews.length > 0 && (
         <View style={styles.section}>
