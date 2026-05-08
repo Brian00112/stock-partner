@@ -81,8 +81,18 @@ function MarketStatusBanner() {
   );
 }
 
+function vixLabel(price: number): { text: string; color: string } {
+  if (price < 15) return { text: 'Low Fear', color: '#00C896' };
+  if (price < 25) return { text: 'Moderate', color: '#F5A623' };
+  if (price < 35) return { text: 'High Fear', color: '#FF6B35' };
+  return { text: 'Extreme Fear', color: '#FF4757' };
+}
+
 function IndexCard({ item, onPress }: { item: StockQuote; onPress?: () => void }) {
   const up = item.change >= 0;
+  const isVix = item.symbol === '^VIX';
+  const vix = isVix ? vixLabel(item.price) : null;
+
   return (
     <TouchableOpacity style={styles.card} activeOpacity={onPress ? 0.7 : 1} onPress={onPress}>
       <View style={styles.cardTop}>
@@ -90,11 +100,17 @@ function IndexCard({ item, onPress }: { item: StockQuote; onPress?: () => void }
           <Text style={styles.indexName}>{item.name}</Text>
           <Text style={styles.symbol}>{item.symbol}</Text>
         </View>
-        <View style={[styles.badge, { backgroundColor: up ? '#0d2e22' : '#2e0d0d' }]}>
-          <Text style={[styles.badgeText, { color: up ? '#00C896' : '#FF4757' }]}>
-            {up ? '▲' : '▼'} {Math.abs(item.changePercent).toFixed(2)}%
-          </Text>
-        </View>
+        {vix ? (
+          <View style={[styles.badge, { backgroundColor: vix.color + '22' }]}>
+            <Text style={[styles.badgeText, { color: vix.color }]}>{vix.text}</Text>
+          </View>
+        ) : (
+          <View style={[styles.badge, { backgroundColor: up ? '#0d2e22' : '#2e0d0d' }]}>
+            <Text style={[styles.badgeText, { color: up ? '#00C896' : '#FF4757' }]}>
+              {up ? '▲' : '▼'} {Math.abs(item.changePercent).toFixed(2)}%
+            </Text>
+          </View>
+        )}
       </View>
       <Text style={styles.price}>
         {item.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -102,7 +118,7 @@ function IndexCard({ item, onPress }: { item: StockQuote; onPress?: () => void }
       <Text style={[styles.change, { color: up ? '#00C896' : '#FF4757' }]}>
         {up ? '+' : ''}{item.change.toFixed(2)} today
       </Text>
-    </View>
+    </TouchableOpacity>
   );
 }
 

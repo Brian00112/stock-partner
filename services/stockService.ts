@@ -15,6 +15,7 @@ const INDICES = [
   { symbol: '^GSPC', name: 'S&P 500' },
   { symbol: '^IXIC', name: 'NASDAQ' },
   { symbol: '^DJI', name: 'DOW JONES' },
+  { symbol: '^VIX', name: 'VIX Volatility' },
   { symbol: 'SPY', name: 'SPY ETF' },
   { symbol: 'QQQ', name: 'QQQ ETF' },
   { symbol: 'IWM', name: 'Russell 2000 ETF' },
